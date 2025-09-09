@@ -9,7 +9,7 @@ def index(request):
         city = (request.POST.get("city") or "").strip()
 
         if city:
-            api_key = "e4451dcdfc7707a714b8746ca5eaa652"  #"PROVIDE API KEY"
+            api_key = "#"PROVIDE API KEY""  
             try:
                 r = requests.get(
                     "https://api.openweathermap.org/data/2.5/weather",
