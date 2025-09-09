@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Weather • Live Card</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    :root{
+      --card-bg: rgba(255,255,255,0.08);
+      --card-stroke: rgba(255,255,255,0.12);
+      --text: #eef1ff;
+      --muted: #c7cbff;
+      --good: #65d98a;
+      --warn: #ffd166;
+      --bad:  #ff6b6b;
+      --drop: #72d6ff;
+      --wind: #cfe6ff;
+      --hot:  #ff8a58;
+      --cold: #5ac8ff;
+      --mild: #9affb0;
+      --glow: rgba(138,180,255,0.35);
+      --blur: 20px;
+      --wind-duration: 5s;
+      --temp-pulse: 3s;
+    }
+    @media (prefers-reduced-motion: reduce){ *{animation:none!important;transition:none!important;} }
+    html, body{
+      height: 100%;
+      color: var(--text);
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, Segoe UI, Roboto, Helvetica, Arial;
+      background: radial-gradient(1000px 600px at 20% 20%, #1b244a 0%, #0b0f24 100%);
+      background-attachment: fixed;
+    }
+    body.theme-hot{  background: radial-gradient(1200px 800px at 15% 20%, #401a0d 0%, #0b0f24 90%); }
+    body.theme-mild{ background: radial-gradient(1200px 800px at 15% 20%, #103225 0%, #0b0f24 90%); }
+    body.theme-cold{ background: radial-gradient(1200px 800px at 15% 20%, #0d2740 0%, #0b0f24 90%); }
+
+    .wrap{ min-height: 100%; display: grid; place-items: center; padding: 32px; }
+    .card{
+      width: min(1100px, 95vw);
+      border-radius: 20px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.05));
+      border: 1px solid var(--card-stroke);
+      backdrop-filter: blur(var(--blur));
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.05) inset, 0 0 60px var(--glow);
+      overflow: hidden;
+    }
+
+    .card-header{ display: grid; grid-template-columns: 1fr auto; gap: 16px; padding: 22px 24px 8px; }
+    .place h1{ margin: 0; font-size: clamp(22px, 3vw, 28px); }
+    .place .desc{ color: var(--muted); font-size: 14px; }
+    .actions{ display: flex; gap: 10px; align-items: center; }
+    .btn{
+      border: 1px solid var(--card-stroke); background: var(--card-bg); color: var(--text);
+      padding: 10px 14px; border-radius: 10px; cursor: pointer; transition: transform .2s ease, background .2s ease;
+    }
+    .btn:hover{ transform: translateY(-2px); background: rgba(255,255,255,0.12); }
+
+    .card-body{ display: grid; grid-template-columns: 1.2fr 1fr; gap: 10px; padding: 8px 24px 24px; }
+    @media (max-width: 820px){ .card-body{ grid-template-columns: 1fr; } }
+
+    .temp-block{ display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 18px; padding: 16px 14px; border-radius: 16px; }
+    .temp-value{ font-size: clamp(56px, 12vw, 96px); font-weight: 700; line-height: 1; letter-spacing: -1px; text-shadow: 0 6px 30px rgba(0,0,0,0.5); }
+    .sub{ color: var(--muted); font-size: 14px; margin-top: 6px; }
+
+    /* >>> Wider Conditions tile so the full text fits */
+    .panels{
+      display: grid;
+      grid-template-columns: 1fr 1fr 1.4fr; /* humidity, wind, CONDITIONS (wider) */
+      gap: 14px;
+    }
+    @media (max-width: 1020px){ .panels{ grid-template-columns: 1fr 1fr 1.2fr; } }
+    @media (max-width: 820px){  .panels{ grid-template-columns: 1fr; } }
+
+    .panel{
+      position: relative;
+      background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04));
+      border: 1px solid var(--card-stroke);
+      border-radius: 16px;
+      padding: 14px 14px 16px;
+      isolation: isolate;
+      transition: transform .2s ease;
+    }
+    .panel:hover{ transform: translateY(-3px); }
+    .panel h3{ margin: 0 0 10px; font-size: 14px; letter-spacing: .5px; text-transform: uppercase; color: var(--muted); }
+    .metric{ font-size: 28px; font-weight: 700; margin-bottom: 6px; }
+    .badge{ display: inline-block; font-size: 12px; padding: 4px 8px; border-radius: 999px; border: 1px solid var(--card-stroke); background: rgba(255,255,255,0.06); color: var(--muted); }
+
+    .logo{ width: 110px; height: 110px; }
+    .logo svg{ width: 100%; height: 100%; filter: drop-shadow(0 10px 20px rgba(0,0,0,0.4)); }
+    .tiny-logo{ position: absolute; right: 10px; top: 8px; width: 46px; height: 46px; opacity: .85; pointer-events: none; }
+    .tiny-logo svg{ width: 100%; height: 100%; }
+
+    .sun-rays{ transform-origin: 50% 50%; animation: spin var(--temp-pulse) linear infinite; }
+    @keyframes spin{ to{ transform: rotate(360deg); } }
+    .sun-core{ animation: throb var(--temp-pulse) ease-in-out infinite; }
+    @keyframes throb{ 0%,100%{ transform: scale(1); } 50%{ transform: scale(1.08); } }
+    .thermo-mercury{ transform-origin: 50% 100%; animation: breathe 4s ease-in-out infinite; }
+    @keyframes breathe{ 0%,100%{ transform: scaleY(0.95); } 50%{ transform: scaleY(1.05); } }
+    .flake{ transform-origin: 50% 50%; animation: slowspin 10s linear infinite; }
+    @keyframes slowspin{ to{ transform: rotate(360deg); } }
+
+    .rainfield{ position: absolute; inset: 0; overflow: hidden; z-index: -1; opacity: .55; }
+    .drop{ position: absolute; width: 2px; height: 10px; background: linear-gradient(to bottom, rgba(255,255,255,0.0), var(--drop)); top: -12px; border-radius: 999px; animation: rain linear infinite; }
+    @keyframes rain{ to{ transform: translateY(180%); } }
+    .ripple{ position: absolute; left: 12px; bottom: 12px; width: 12px; height: 12px; border-radius: 999px; border: 2px solid var(--drop); opacity: .5; animation: ripple 2.8s ease-out infinite; }
+    @keyframes ripple{ from{ transform: scale(.3); opacity: .6; } to{ transform: scale(3); opacity: 0; } }
+
+    .windlines{ position: absolute; inset: 0; overflow: hidden; z-index: -1; opacity: .6; }
+    .gust{ position: absolute; left: -30%; width: 35%; height: 2px; background: linear-gradient(90deg, transparent, var(--wind), transparent); border-radius: 999px; animation: blow var(--wind-duration) linear infinite; }
+    .gust:nth-child(1){ top: 25%; } .gust:nth-child(2){ top: 45%; animation-delay: calc(var(--wind-duration) * .33); } .gust:nth-child(3){ top: 65%; animation-delay: calc(var(--wind-duration) * .66); }
+    @keyframes blow{ from{ transform: translateX(0); opacity: .9; } to{ transform: translateX(450%); opacity: .2; } }
+
+    .status.good{ color: var(--good); } .status.warn{ color: var(--warn); } .status.bad{ color: var(--bad); }
+
+    /* >>> Make condition text fully visible + responsive */
+    #condText{
+      font-size: clamp(22px, 3.2vw, 46px);
+      line-height: 1.15;
+      overflow-wrap: anywhere;   /* break long words if needed */
+      hyphens: auto;
+    }
+
+    /* Search form */
+    .searchbar{ display:flex; gap:8px; padding: 12px 24px 0; }
+    .searchbar input{ flex: 1; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--card-stroke); background: rgba(255,255,255,0.08); color: var(--text); }
+    .searchbar button{ padding: 10px 14px; border-radius: 10px; border: 1px solid var(--card-stroke); background: var(--card-bg); color: var(--text); cursor: pointer; }
+    .error{ color:#ffd1d1; margin: 8px 24px 0; font-size: 14px; }
+  </style>
+</head>
+<body class="theme-mild">
+
+  {% if weather %}
+    {{ weather|json_script:"weather-data" }}
+    <script>
+      window.weatherData = JSON.parse(document.getElementById("weather-data").textContent);
+    </script>
+  {% endif %}
+
+  <div class="wrap">
+    <article class="card" role="region" aria-label="Weather overview">
+
+      <!-- City search -->
+      <form method="post" class="searchbar">
+        {% csrf_token %}
+        <input type="text" name="city" placeholder="Enter city…" required>
+        <button type="submit">Get Weather</button>
+      </form>
+      {% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+      <header class="card-header">
+        <div class="place">
+          <h1 id="place">—</h1>
+          <div class="desc" id="desc">—</div>
+        </div>
+        <div class="actions">
+          <button class="btn" id="toggleUnits" aria-pressed="false" aria-label="Toggle Celsius/Fahrenheit">°C / °F</button>
+          <button class="btn" id="toggleMotion" aria-pressed="false" aria-label="Reduce/enable motion">Motion</button>
+        </div>
+      </header>
+
+      <section class="card-body">
+        <div class="temp-block panel">
+          <div class="logo" aria-hidden="true" id="tempLogo"></div>
+          <div>
+            <div class="temp-value"><span id="tempNum">--</span><span id="tempUnit">°C</span></div>
+            <div class="sub" id="when">Updated just now</div>
+          </div>
+        </div>
+
+        <div class="panels">
+          <div class="panel" id="humidityPanel">
+            <h3>Humidity</h3>
+            <div class="metric"><span id="humidityNum">--</span>%</div>
+            <span class="badge" id="humidityBadge">—</span>
+            <div class="tiny-logo" id="humidityLogo" aria-hidden="true"></div>
+            <div class="rainfield" id="rainfield"></div>
+            <div class="ripple"></div>
+          </div>
+
+          <div class="panel" id="windPanel">
+            <h3>Wind</h3>
+            <div class="metric"><span id="windNum">--</span> km/h</div>
+            <span class="badge" id="windBadge">—</span>
+            <div class="tiny-logo" id="windLogo" aria-hidden="true"></div>
+            <div class="windlines">
+              <div class="gust"></div>
+              <div class="gust"></div>
+              <div class="gust"></div>
+            </div>
+          </div>
+
+          <div class="panel" id="condPanel">
+            <h3>Conditions</h3>
+            <div class="metric" id="condText" title="">—</div>
+            <span class="badge" id="tempBadge">—</span>
+          </div>
+        </div>
+      </section>
+    </article>
+  </div>
+
+  <script>
+    window.weatherData = window.weatherData || { city:"Your City", country:"—", description:"—", temp:22, humidity:40, wind_speed:8 };
+
+    const THRESH = { TEMP_HOT: 30, TEMP_COLD: 10, HUMID_HIGH: 70, HUMID_LOW: 30, WIND_HIGH: 30, WIND_LOW: 10 };
+    const $ = s => document.querySelector(s);
+    function setThemeByTemp(t){ document.body.className = t>=THRESH.TEMP_HOT?"theme-hot":(t<=THRESH.TEMP_COLD?"theme-cold":"theme-mild"); }
+    function statusChip(v, low, high){ if(v<=low)return{label:"Low",cls:"good"}; if(v>=high)return{label:"High",cls:"bad"}; return{label:"Moderate",cls:"warn"}; }
+    function nowString(){ const d=new Date(); return d.toLocaleString([], {hour:"2-digit", minute:"2-digit", day:"2-digit", month:"short"}); }
+
+    function mountTempLogo(tC){
+      const hot=tC>=THRESH.TEMP_HOT, cold=tC<=THRESH.TEMP_COLD; let svg="";
+      if(hot){
+        svg=`<svg viewBox="0 0 120 120" role="img" aria-label="Hot">
+          <defs><radialGradient id="gSun"><stop offset="0%" stop-color="#ffd56b"/><stop offset="100%" stop-color="#ff8a58"/></radialGradient></defs>
+          <g class="sun-rays">${Array.from({length:12}).map((_,i)=>`<rect x="58" y="4" width="4" height="22" rx="2" transform="rotate(${i*30} 60 60)" fill="#ffc45a" opacity="0.9"/>`).join("")}</g>
+          <circle class="sun-core" cx="60" cy="60" r="28" fill="url(#gSun)" /></svg>`;
+      }else if(cold){
+        svg=`<svg viewBox="0 0 120 120" role="img" aria-label="Cold">
+          <g class="flake" fill="none" stroke="#5ac8ff" stroke-width="4" stroke-linecap="round">
+          ${Array.from({length:6}).map((_,i)=>`<g transform="rotate(${i*60} 60 60)">
+          <line x1="60" y1="20" x2="60" y2="100"/><line x1="60" y1="20" x2="52" y2="32"/><line x1="60" y1="20" x2="68" y2="32"/>
+          <line x1="60" y1="100" x2="52" y2="88"/><line x1="60" y1="100" x2="68" y2="88"/></g>`).join("")}
+          </g></svg>`;
+      }else{
+        svg=`<svg viewBox="0 0 120 120" role="img" aria-label="Mild">
+          <defs><linearGradient id="gThermo" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#9affb0"/><stop offset="100%" stop-color="#2bd971"/></linearGradient></defs>
+          <rect x="52" y="18" width="16" height="64" rx="8" fill="#d7def7"/><circle cx="60" cy="94" r="18" fill="#d7def7"/>
+          <rect class="thermo-mercury" x="54" y="54" width="12" height="28" rx="6" fill="url(#gThermo)"/><circle cx="60" cy="94" r="14" fill="url(#gThermo)"/></svg>`;
+      }
+      $("#tempLogo").innerHTML=svg;
+    }
+
+    function humidityIcon(h){
+      if(h>=THRESH.HUMID_HIGH){
+        return `<svg viewBox="0 0 64 64" role="img" aria-label="High humidity"><defs><linearGradient id="gDrop" x1="0" x2="1" y1="0" y2="1"><stop offset="0%" stop-color="#9ddfff"/><stop offset="100%" stop-color="#2fa7ff"/></linearGradient></defs><path d="M32 6 C22 20, 14 28, 14 38 a18 18 0 0 0 36 0 c0-10-8-18-18-32z" fill="url(#gDrop)"/></svg>`;
+      }else if(h<=THRESH.HUMID_LOW){
+        return `<svg viewBox="0 0 64 64" role="img" aria-label="Low humidity"><path d="M32 6 C22 20, 14 28, 14 38 a18 18 0 0 0 36 0 c0-10-8-18-18-32z" fill="none" stroke="#9ddfff" stroke-width="3"/></svg>`;
+      }else{
+        return `<svg viewBox="0 0 64 64" role="img" aria-label="Moderate humidity"><path d="M26 10 C20 18, 16 22, 16 28 a10 10 0 0 0 20 0 c0-6-4-10-10-18z" fill="#9ddfff"/><path d="M44 16 C38 24, 34 28, 34 34 a9 9 0 0 0 18 0 c0-6-4-10-8-18z" fill="#5cc4ff" opacity="0.85"/></svg>`;
+      }
+    }
+
+    function windIcon(w){
+      if(w>=THRESH.WIND_HIGH){
+        return `<svg viewBox="0 0 64 64" role="img" aria-label="Strong wind"><g fill="none" stroke="#cfe6ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="10" x2="12" y2="54"/><path d="M12 14 h8 l10 6 l-10 6 h-8z" fill="#cfe6ff"/><path d="M12 26 h8 l10 6 l-10 6 h-8z" fill="#a8d6ff"/></g></svg>`;
+      }else if(w<=THRESH.WIND_LOW){
+        return `<svg viewBox="0 0 64 64" role="img" aria-label="Gentle breeze"><path d="M14 40 C24 34, 34 34, 46 36" fill="none" stroke="#bff2c7" stroke-width="3" stroke-linecap="round"/><path d="M32 22 C28 30, 24 38, 18 44 a8 8 0 0 0 12 -2 c3-5 4-12 2-20z" fill="#9affb0"/></svg>`;
+      }else{
+        return `<svg viewBox="0 0 64 64" role="img" aria-label="Windy"><path d="M10 24 q12 -4 22 0 q10 4 20 0" fill="none" stroke="#cfe6ff" stroke-width="3" stroke-linecap="round"/><path d="M8 36 q14 -5 26 0 q12 5 22 0" fill="none" stroke="#9ed4ff" stroke-width="3" stroke-linecap="round"/></svg>`;
+      }
+    }
+
+    function mountHumidity(h){
+      $("#humidityNum").textContent = Math.round(h);
+      const chip=statusChip(h,THRESH.HUMID_LOW,THRESH.HUMID_HIGH);
+      $("#humidityBadge").textContent=chip.label; $("#humidityBadge").className="badge status "+chip.cls;
+      $("#humidityLogo").innerHTML = humidityIcon(h);
+      const field=$("#rainfield"); field.innerHTML="";
+      const count = h>=THRESH.HUMID_HIGH?30:(h<=THRESH.HUMID_LOW?4:14);
+      for(let i=0;i<count;i++){ const d=document.createElement("div"); d.className="drop"; d.style.left=Math.random()*100+"%"; d.style.animationDuration=(1.2+Math.random()*1.6)+"s"; d.style.opacity=(0.35+Math.random()*0.65); d.style.height=(8+Math.random()*10)+"px"; field.appendChild(d); }
+    }
+
+    function mountWind(w){
+      $("#windNum").textContent = Math.round(w);
+      const chip=statusChip(w,THRESH.WIND_LOW,THRESH.WIND_HIGH);
+      $("#windBadge").textContent=chip.label; $("#windBadge").className="badge status "+chip.cls;
+      $("#windLogo").innerHTML = windIcon(w);
+      const dur=Math.max(1.2, 7 - (w/8)); document.documentElement.style.setProperty("--wind-duration", dur+"s");
+    }
+
+    function mountConditions(desc,tC){
+      const txt = desc || "—";
+      $("#condText").textContent = txt;
+      $("#condText").setAttribute("title", txt);  // tooltip with full text
+      const badge=$("#tempBadge"); let label="Mild", cls="warn";
+      if(tC>=THRESH.TEMP_HOT){ label="Hot"; cls="bad"; } else if(tC<=THRESH.TEMP_COLD){ label="Cold"; cls="good"; }
+      badge.textContent=label; badge.className="badge status "+cls;
+    }
+
+    let showCelsius=true;
+    function renderTemp(tC){ $("#tempNum").textContent = showCelsius?Math.round(tC):Math.round((tC*9/5)+32); $("#tempUnit").textContent = showCelsius?"°C":"°F"; }
+
+    function boot(){
+      const d=window.weatherData||{};
+      const tC=Number(d.temp||0), hum=Number(d.humidity||0), wind=Number(d.wind_speed||0);
+      $("#place").textContent = [d.city, d.country].filter(Boolean).join(", ") || "—";
+      $("#desc").textContent  = d.description || "—";
+      $("#when").textContent  = `Updated ${nowString()}`;
+      setThemeByTemp(tC); renderTemp(tC); mountTempLogo(tC); mountHumidity(hum); mountWind(wind); mountConditions(d.description,tC);
+
+      $("#toggleUnits").addEventListener("click",()=>{ showCelsius=!showCelsius; renderTemp(tC); });
+      let motionReduced=false; $("#toggleMotion").addEventListener("click",()=>{ motionReduced=!motionReduced; document.querySelectorAll("*").forEach(el=>{ el.style.animation = motionReduced?"none":""; }); });
+    }
+    function nowString(){ const d=new Date(); return d.toLocaleString([], {hour:"2-digit", minute:"2-digit", day:"2-digit", month:"short"}); }
+    document.addEventListener("DOMContentLoaded", boot);
+  </script>
+</body>
+</html>
