@@ -1,4 +1,4 @@
-# 🌤️ Django Weather App
+<!-- # 🌤️ Django Weather App
 
 A small Django app that shows current weather for a city using the OpenWeather API — wrapped in a sleek, animated UI (glassmorphism, responsive layout, C/°F toggle, reduced-motion toggle, and dynamic icons for temperature, humidity and wind).
 
@@ -23,4 +23,6 @@ A small Django app that shows current weather for a city using the OpenWeather A
 - `requests` for HTTP calls
 - `python-dotenv` to load `.env` in development
 
----
+--- -->
+
+hello sample feature branch
